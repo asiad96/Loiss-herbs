@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "accounts.apps.AccountsConfig",  # Add accounts app
     "blog.apps.BlogConfig",
     "bookings.apps.BookingsConfig",
     "rest_framework",  # Add REST framework support

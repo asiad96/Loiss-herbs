@@ -4,6 +4,11 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from .models import Service, Booking, Client
 from django.contrib import messages
+from django.contrib.auth import login
+from .forms import ClientRegistrationForm
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
 
 # Create your views here.
 
@@ -61,3 +66,44 @@ class ClientDashboard(LoginRequiredMixin, ListView):
         return Booking.objects.filter(client__user=self.request.user).order_by(
             "date", "time"
         )
+
+
+class ClientRegistrationView(CreateView):
+    form_class = ClientRegistrationForm
+    template_name = "bookings/registration.html"
+    success_url = reverse_lazy("login")  # Redirect to login page after registration
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        login(self.request, self.object)  # Log the user in after registration
+        return response
+
+
+class ClientRegistrationAPI(APIView):
+    """API endpoint for client registration"""
+
+    def post(self, request):
+        form = ClientRegistrationForm(data=request.data)
+        if form.is_valid():
+            user = form.save()
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Registration successful",
+                    "user": {
+                        "id": user.id,
+                        "username": user.username,
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                    },
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(
+            {"status": "error", "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+# Views will be added here when we set up the React frontend

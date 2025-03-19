@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from django.core.mail import send_mail
 from django.conf import settings
 from django.template.loader import render_to_string
+from accounts.models import Client
 
 
 class BusinessHours(models.Model):
@@ -76,58 +77,19 @@ class Service(models.Model):
         return self.name
 
 
-class Client(models.Model):
-    """
-    Stores client/patient information.
-    Each client needs a user account for online booking and management.
-    Includes contact info and important medical information.
-    """
-
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        help_text="Link to user account for online access",
-    )
-    first_name = models.CharField(max_length=100, help_text="Client's first name")
-    last_name = models.CharField(max_length=100, help_text="Client's last name")
-    email = models.EmailField(
-        help_text="Email address for confirmations and notifications"
-    )
-    phone = models.CharField(max_length=20, help_text="Contact phone number")
-    date_of_birth = models.DateField(
-        help_text="Client's date of birth for health records"
-    )
-    medical_conditions = models.TextField(
-        blank=True, help_text="Any relevant medical conditions or health concerns"
-    )
-    allergies = models.TextField(
-        blank=True, help_text="Any allergies to herbs, medicines, or other substances"
-    )
-    current_medications = models.TextField(
-        blank=True,
-        help_text="Current medications, supplements, or herbal remedies being taken",
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True, help_text="When the client record was created"
-    )
-
-    def __str__(self):
-        """Returns the client's full name when the object is printed"""
-        return f"{self.first_name} {self.last_name}"
-
-
 class Booking(models.Model):
     """
     Represents an appointment booking.
-    Links a client with a specific service at a specific time.
-    Includes status tracking and notes about the appointment.
+    Handles two flows:
+    1. Main Flow: Client books through website (starts as pending)
+    2. Backup Flow: Admin creates booking (can be confirmed directly)
     """
 
     BOOKING_STATUS = [
-        ("pending", "Pending"),  # Just created, needs confirmation
-        ("confirmed", "Confirmed"),  # Confirmed by staff/system
-        ("cancelled", "Cancelled"),  # Cancelled by either party
-        ("completed", "Completed"),  # Service has been provided
+        ("pending", "Pending"),  # When client books through website
+        ("confirmed", "Confirmed"),  # When confirmed by herbalist or created by admin
+        ("cancelled", "Cancelled"),  # When cancelled by either party
+        ("completed", "Completed"),  # After the appointment is done
     ]
 
     client = models.ForeignKey(
@@ -148,21 +110,24 @@ class Booking(models.Model):
         default="pending",
         help_text="Current status of the booking",
     )
+    created_by_admin = models.BooleanField(
+        default=False,
+        help_text="Whether this booking was created by an admin (backup flow)",
+    )
     notes = models.TextField(
-        blank=True, help_text="Any special requests or notes about the appointment"
+        blank=True,
+        help_text="Any special requests or notes about the appointment",
     )
     created_at = models.DateTimeField(
-        auto_now_add=True, help_text="When the booking was created"
+        auto_now_add=True,
+        help_text="When the booking was created",
     )
     updated_at = models.DateTimeField(
-        auto_now=True, help_text="When the booking was last modified"
+        auto_now=True,
+        help_text="When the booking was last modified",
     )
 
     class Meta:
-        """
-        Orders bookings by date and time (newest first)
-        """
-
         ordering = ["-date", "-time"]
 
     def clean(self):
@@ -171,7 +136,8 @@ class Booking(models.Model):
         1. Check if date is not in the past
         2. Check if time is within business hours
         3. Check for double bookings
-        4. Ensure booking end time doesn't overlap with next booking
+        4. Ensure booking end time doesn't overlap
+        5. Set initial status based on who creates the booking
         """
         if not self.date or not self.time:
             return
@@ -189,7 +155,7 @@ class Booking(models.Model):
         duration = timedelta(minutes=self.service.duration)
         booking_end = (datetime.combine(self.date, self.time) + duration).time()
 
-        # Also check if end time is within business hours
+        # Check if end time is within business hours
         if not BusinessHours.is_time_available(self.date, booking_end):
             raise ValidationError("The appointment would end outside business hours")
 
@@ -213,22 +179,18 @@ class Booking(models.Model):
                 raise ValidationError("This time slot overlaps with another booking")
 
     def save(self, *args, **kwargs):
-        """Validate and handle notifications when saving"""
-        is_new = not self.pk  # Check if this is a new booking
-        old_status = None
-
-        # If existing booking, get old status
-        if not is_new:
-            old_status = Booking.objects.get(pk=self.pk).status
+        """
+        Handle saving based on the flow:
+        - Admin flow: Can set status directly
+        - Client flow: Always starts as pending
+        """
+        if not self.pk:  # New booking
+            if not self.created_by_admin:
+                self.status = "pending"  # Client bookings always start as pending
+            # Admin bookings can be set to any status
 
         self.clean()
         super().save(*args, **kwargs)
-
-        # Send notifications based on status changes
-        if is_new:
-            self.notify_new_booking()
-        elif old_status != self.status:
-            self.notify_status_change(old_status)
 
     def notify_new_booking(self):
         """Send notification for new booking request"""
@@ -273,5 +235,4 @@ class Booking(models.Model):
         )
 
     def __str__(self):
-        """Returns a summary of the booking when the object is printed"""
         return f"{self.client} - {self.service} on {self.date} at {self.time}"
