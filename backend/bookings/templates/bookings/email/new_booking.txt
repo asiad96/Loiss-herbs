@@ -1,0 +1,22 @@
+New Booking Request
+
+A new booking request has been received:
+
+Client: {{ booking.client.first_name }} {{ booking.client.last_name }}
+Service: {{ booking.service.name }}
+Date: {{ booking.date }}
+Time: {{ booking.time }}
+Duration: {{ booking.service.duration }} minutes
+Notes: {{ booking.notes|default:"No special notes" }}
+
+Client Contact Information:
+Email: {{ booking.client.email }}
+Phone: {{ booking.client.phone }}
+
+Medical Information:
+Medical Conditions: {{ booking.client.medical_conditions|default:"None specified" }}
+Allergies: {{ booking.client.allergies|default:"None specified" }}
+Current Medications: {{ booking.client.current_medications|default:"None specified" }}
+
+To confirm or manage this booking, please visit:
+{{ admin_url }}

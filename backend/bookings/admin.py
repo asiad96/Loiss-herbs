@@ -1,5 +1,11 @@
 from django.contrib import admin
-from .models import Service, Client, Booking, Testimonial
+from .models import Service, Client, Booking, BusinessHours
+
+
+@admin.register(BusinessHours)
+class BusinessHoursAdmin(admin.ModelAdmin):
+    list_display = ("get_day_display", "start_time", "end_time", "is_available")
+    list_filter = ("is_available", "day")
 
 
 @admin.register(Service)
@@ -22,10 +28,3 @@ class BookingAdmin(admin.ModelAdmin):
     list_filter = ("status", "date", "service")
     search_fields = ("client__first_name", "client__last_name", "service__name")
     date_hierarchy = "date"
-
-
-@admin.register(Testimonial)
-class TestimonialAdmin(admin.ModelAdmin):
-    list_display = ("client", "rating", "created_at", "is_approved")
-    list_filter = ("rating", "is_approved", "created_at")
-    search_fields = ("client__first_name", "client__last_name", "content")
